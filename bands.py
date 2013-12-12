@@ -2,6 +2,10 @@ import numpy as np
 import pygame
 
 
+def normalize(vector):
+    return vector / np.linalg.norm(vector)
+
+
 class Node:
     def __init__(self, pos = None, prv = None, nxt = None,
                  locked = False, mass = 1.0, jointRigidity = 1.0):
@@ -14,14 +18,14 @@ class Node:
 
     def calcForces(self):
         totForce = np.array([0, 0, 0])
-        totForce = totForce + self.getTensionForce()
-        totForce = totForce + self.getObstacleForce()
+        if not self.locked:
+            totForce = totForce + self.getTensionForce()
+            totForce = totForce + self.getObstacleForce()
         return totForce
 
 
     def applyForces(self):
-        if not self.locked:
-            self.pos = self.pos + 1 / self.mass * self.calcForces()
+        self.pos = self.pos + 1 / self.mass * self.calcForces()
         
     def getTensionForce(self):
         tensionForce = np.array([0, 0, 0])
@@ -42,16 +46,28 @@ class Node:
 
     def getObstacleForce(self):
         obstacleForce = np.array([0, 0, 0])
-        obsPos = np.array([140, 120, 0])
+        obsPos = np.array([150, 130, 0])
         dist = np.linalg.norm(obsPos - self.pos)
 
         if dist < 30:
             obstacleForce = (self.pos - obsPos) / (dist*dist)
 
-        return obstacleForce
+            if self.prv and self.nxt:
+                obstacleForce = - np.linalg.norm(obstacleForce) * \
+                                (normalize(self.nxt.pos - self.pos) + \
+                                normalize(self.prv.pos - self.pos))
+#            if self.prv and self.nxt:
+#                obstacleForce = obstacleForce - obstacleForce * \
+#                                ((self.prv.pos - self.nxt.pos) / \
+#                                np.linalg.norm(self.prv.pos - self.nxt.pos)) * \
+#                                ((self.prv.pos - self.nxt.pos) / \
+#                                np.linalg.norm(self.prv.pos - self.nxt.pos))
+
+        return obstacleForce * 20
 
     def getXY(self):
         return (int(self.pos[0]), int(self.pos[1]))
+
      
 if __name__ == "__main__":
 
@@ -63,14 +79,8 @@ if __name__ == "__main__":
     head = Node(np.array([90, 90, 0]), None, None, True)
     node = head
 
-    positions = [[131, 131, 0],
+    positions = [[131, 100, 0],
                  [180, 80, 0],
-                 [380, 20, 0],
-                 [20, 20, 0],
-                 [50, 20, 0],
-                 [120, 100, 0],
-                 [100, 50, 0],
-                 [180, 300, 0],
                  [250, 190, 0],
                  [500, 300, 0]]
 
@@ -87,13 +97,17 @@ if __name__ == "__main__":
 
     while True:
         window.fill(pygame.Color(0, 0, 0))
-        pygame.draw.circle(window, pygame.Color(255, 255, 0), (140, 120), 30, 2)
+        pygame.draw.circle(window, pygame.Color(255, 255, 0), (150, 130), 30, 2)
 
         node = head
         while(node):
             if node.nxt:
                 pygame.draw.line(window, pygame.Color(255, 0, 0), node.getXY(),
                                 node.nxt.getXY(), 4)
+
+            forceVector = node.pos + node.calcForces() * 100
+            pygame.draw.line(window, pygame.Color(255, 255, 0),
+                    node.getXY(), (forceVector[0], forceVector[1]), 1)
             pygame.draw.circle(window, pygame.Color(0, 255, 0), node.getXY(),
                                3, 3)
 
@@ -101,4 +115,4 @@ if __name__ == "__main__":
             node = node.nxt
 
         pygame.display.update()
-        fpsClock.tick(100)
+        fpsClock.tick(30)
