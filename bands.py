@@ -1,5 +1,6 @@
 import numpy as np
 import pygame
+import pdb
 
 
 def normalize(vector):
@@ -15,21 +16,40 @@ class Node:
         self.locked = locked    # if true, forces have no effect on this node
         self.mass = mass        # 1 / how much a froce effects that node
         self.k = jointRigidity  # coefficient for the tension force
-        self.dist = 0
+        self.dist = 0           # way to first node
+        self.minDist = 20
         if self.prv:
             self.dist = self.getDistance()
+
+    def insertNodeProg(self, pos, locked = False, mass = 1.0, jointRigidity = 1.0):
+        # insert new node after
+        self.nxt = Node(pos, self, self.nxt, locked, mass, jointRigidity)
+        self.nxt.nxt.prv = self.nxt
+        return
+
+    def insertNodeRetro(self, pos, locked = False, mass = 1.0, jointRigidity = 1.0):
+        # insert new node after
+        self.prv = Node(pos, self.prv, self, locked, mass, jointRigidity)
+        self.prv.prv.nxt = self.prv
+        return
+
 
     def calcForces(self):
         totForce = np.array([0, 0, 0])
         if not self.locked:
             totForce = totForce + self.getTensionForce()
             totForce = totForce + self.getObstacleForce()
-            totForce = totForce + self.getDVForce(2)
+            totForce = totForce + self.getDVForce(3)
+            totForce = totForce + self.getVForce()
         return totForce
 
 
     def applyForces(self):
         self.pos = self.pos + 1 / self.mass * self.calcForces()
+        if self.pos[2] > 255:
+            self.pos[2] = 255
+        if self.pos[2] < 0:
+            self.pos[2] = 0
         
     def getTensionForce(self):
         pos = self.pos[0:2]
@@ -76,13 +96,40 @@ class Node:
 
     def getDVForce(self, aMax):
         force = np.array([0, 0, 0])
-        dVR = self.getDVDXYRetro()
-        dVP = self.getDVDXY()
-        if dVR > aMax:
-            force[2] = -dVR
-        elif dVP < -aMax:
-            force[2] = dVP
+        accRetro = self.getAccelerationRetro()
+        accProg = self.getAccelerationProg()
+
+#       force[2] = force[2] + (accRetro + accProg)
+
+        if accRetro > aMax:
+            force[2] = force[2] + accRetro - aMax
+        elif accRetro < -aMax:
+            force[2] = force[2] + accRetro + aMax
+
+        if accProg > aMax:
+            force[2] = force[2] + accProg - aMax
+        elif accProg < -aMax:
+            force[2] = force[2] + accProg + aMax
+
         return force
+        
+
+#       force = np.array([0, 0, 0])
+#       dVR = self.getDVDXYRetro()
+#       dVP = self.getDVDXY()
+#       if dVR > aMax:
+#           force[2] = -dVR
+#       elif dVP < -aMax:
+#           force[2] = dVP
+#       return force
+
+    def smoothCurve(self, fPedMax):
+        if self.getCurvature() > fPedMax:
+            if np.linalg.norm(self.pos - self.nxt.pos) > self.minDist:
+                self.insertNodeProg(self.pos + (self.nxt.pos - self.pos) / 3)
+            if np.linalg.norm(self.pos - self.prv.pos) > self.minDist:
+                self.insertNodeRetro(self.pos + (self.prv.pos - self.pos) / 3)
+
 
     def getXY(self):
         return (int(self.pos[0]), int(self.pos[1]))
@@ -112,17 +159,33 @@ class Node:
             derivative = derivative / np.linalg.norm(diff)
         return derivative
 
+    def getAccelerationProg(self):
+        acc = 0
+
+        if self.nxt:
+            diff = self.nxt.pos - self.pos
+            diff[2] = 0
+            acc = (self.nxt.pos[2]**2 - self.pos[2]**2) / np.linalg.norm(diff) / 2
+        return acc
+
+    def getAccelerationRetro(self):
+        acc = 0
+
+        if self.prv:
+            diff = self.prv.pos - self.pos
+            diff[2] = 0
+            acc = (self.prv.pos[2]**2 - self.pos[2]**2) / np.linalg.norm(diff) / 2
+        return acc
+
+
     def getCurvature(self):
         curvature = 0
-        if self.nxt:
-            pos = self.pos
-            nextPos = self.nxt.pos
-            prevPos = self.prv.pos
-            pos[2] = 0
-            nextPos[2] = 0
-            prevPos[2] = 0
+        if self.nxt and self.prv:
+            pos = self.pos[0:2]
+            nxt = self.nxt.pos[0:2]
+            prv = self.prv.pos[0:2]
 
-            curvature = normalize(nextPos - pos) - normalize(pos - prevPos) 
+            curvature = normalize(nxt - pos) - normalize(pos - prv) 
             curvature = self.pos[2] * np.linalg.norm(curvature)
         return curvature
 
@@ -130,6 +193,9 @@ class Node:
         pos = self.pos[0:2]
         prv = self.prv.pos[0:2]
         return np.linalg.norm(pos - prv) + self.prv.dist
+
+    def getVForce(self):
+        return np.array([0, 0, 0.3])
         
 
 
@@ -146,6 +212,7 @@ if __name__ == "__main__":
 
     positions = [[131, 100, 255],
                  [180,  80, 255],
+                 [200, 150, 255],
                  [250, 190, 255],
                  [200, 250,   0]]
 
@@ -170,9 +237,15 @@ if __name__ == "__main__":
                 pygame.draw.line(window, pygame.Color(150, 150, 150),
                                 (node.prv.dist, node.prv.getV()),
                                 (node.dist, node.getV()), 2)
+                pygame.draw.line(window, pygame.Color(255, 0, 0),
+                                (node.dist - 2, 0),
+                                (node.dist - 2, node.getAccelerationRetro() * 20), 4)
             if node.nxt:
                 pygame.draw.line(window, pygame.Color(255, 0, 0), node.getXY(),
                                 node.nxt.getXY(), 4)
+                pygame.draw.line(window, pygame.Color(0, 255, 0),
+                                (node.dist + 2, 0),
+                                (node.dist + 2, node.getAccelerationProg() * 20), 4)
 
             forceVector = node.pos + node.calcForces() * 100
             pygame.draw.line(window, pygame.Color(255, 255, 0),
@@ -183,6 +256,7 @@ if __name__ == "__main__":
 
 
             node.applyForces()
+            node.smoothCurve(10)
             node = node.nxt
 
         pygame.display.update()
