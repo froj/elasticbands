@@ -39,7 +39,7 @@ class Node:
         if not self.locked:
             totForce = totForce + self.getTensionForce()
             totForce = totForce + self.getObstacleForce()
-            totForce = totForce + self.getDVForce(3)
+            totForce = totForce + self.getDVForce(5)
             totForce = totForce + self.getVForce()
         return totForce
 
@@ -52,22 +52,23 @@ class Node:
             self.pos[2] = 0
         
     def getTensionForce(self):
-        pos = self.pos[0:2]
-        tensionForce = np.array([0, 0])
+        pos = self.pos[0:3]
+        tensionForce = np.array([0, 0, 0])
 
         if self.prv:
-            prv = self.prv.pos[0:2]
+            prv = self.prv.pos[0:3]
             kPrv = 1 / (1 / self.k + 1 / self.prv.k)
             tensionForce = tensionForce + kPrv * (prv - pos) / \
                            np.linalg.norm((prv - pos))
 
         if self.nxt:
-            nxt = self.nxt.pos[0:2]
+            nxt = self.nxt.pos[0:3]
             kNxt = 1 / (1 / self.k + 1 / self.nxt.k)
             tensionForce = tensionForce + kNxt * (nxt- pos) / \
                            np.linalg.norm((nxt- pos))
 
-        return np.append(tensionForce, 0)
+#       return np.append(tensionForce, 0)
+        return tensionForce
 
     def getObstacleForce(self):
         pos = self.pos[0:2]
@@ -195,7 +196,7 @@ class Node:
         return np.linalg.norm(pos - prv) + self.prv.dist
 
     def getVForce(self):
-        return np.array([0, 0, 0.3])
+        return np.array([0, 0, 0.1])
         
 
 
@@ -210,10 +211,10 @@ if __name__ == "__main__":
     head = Node(np.array([90, 90, 0]), None, None, True)
     node = head
 
-    positions = [[131, 100, 255],
-                 [180,  80, 255],
-                 [200, 150, 255],
-                 [250, 190, 255],
+    positions = [[131, 100,   0],
+                 [180,  80,   0],
+                 [200, 150,   0],
+                 [250, 190,   0],
                  [200, 250,   0]]
 
     for pos in positions:
